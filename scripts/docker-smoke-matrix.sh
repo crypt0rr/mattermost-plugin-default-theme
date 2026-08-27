@@ -36,13 +36,20 @@ run_version() (
 		--env POSTGRES_DB=mattermost \
 		"$POSTGRES_IMAGE" >/dev/null
 
-	for _ in $(seq 1 60); do
+	database_ready=0
+	for _ in $(seq 1 120); do
 		if docker exec "$db" pg_isready -U mmuser -d mattermost >/dev/null 2>&1; then
+			database_ready=1
 			break
 		fi
 		sleep 1
 	done
-	docker exec "$db" pg_isready -U mmuser -d mattermost >/dev/null
+	if [[ "$database_ready" != 1 ]]; then
+		echo "PostgreSQL did not become ready for Team Edition ${version}" >&2
+		docker inspect "$db" >&2 || true
+		docker logs "$db" >&2 || true
+		return 1
+	fi
 
 	docker run --detach --name "$app" --network "$network" --publish "${APP_PORT}:8065" \
 		--env MM_SQLSETTINGS_DRIVERNAME=postgres \
@@ -59,6 +66,8 @@ run_version() (
 		sleep 1
 	done
 	if ! curl --silent --output /dev/null --write-out '%{http_code}' "${base_url}/api/v4/system/ping" | grep -q '^200$'; then
+		echo "Mattermost did not become ready for Team Edition ${version}" >&2
+		docker inspect "$app" >&2 || true
 		docker logs "$app" >&2
 		return 1
 	fi

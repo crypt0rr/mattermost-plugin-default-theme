@@ -2,5 +2,27 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Keep the Mattermost public API at the supported v0.4.0 baseline",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "github.com/mattermost/mattermost/server/public"
+      ],
+      "allowedVersions": "0.4.0"
+    },
+    {
+      "description": "Keep CI on the pinned Go 1.25.13 toolchain",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "go"
+      ],
+      "allowedVersions": "1.25.13"
+    }
   ]
 }
