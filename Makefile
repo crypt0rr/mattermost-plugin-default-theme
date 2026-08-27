@@ -16,6 +16,11 @@ test:
 coverage:
 	$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) ./...
 	$(GO) tool cover -func=$(COVERAGE_FILE)
+	@total="$$( $(GO) tool cover -func=$(COVERAGE_FILE) | awk '/^total:/{print $$3}' )"; \
+	if [ "$$total" != "100.0%" ]; then \
+		echo "Coverage must be 100.0%; got $$total" >&2; \
+		exit 1; \
+	fi
 
 security: build
 	@for binary in server/dist/plugin-*; do \
