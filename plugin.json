@@ -6,7 +6,7 @@
     "support_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/issues",
     "release_notes_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/releases",
     "icon_path": "assets/default-theme-icon.svg",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "min_server_version": "11.7.0",
     "server": {
         "executables": {
@@ -20,17 +20,23 @@
     "settings_schema": {
         "header": "Set a theme for newly created users or apply one theme to one existing user.",
         "footer": "Paste the JSON exported from a Mattermost custom theme.",
-        "settings": [
-            {
-                "key": "DefaultTheme",
-                "display_name": "Default theme",
-                "type": "longtext",
-                "help_text": "Paste a valid Mattermost theme JSON object. Leave blank to use Mattermost's normal default theme.",
-                "placeholder": "{\n  \"sidebarBg\": \"#145DBF\"\n}",
-                "default": ""
-            }
-        ],
+        "settings": [],
         "sections": [
+            {
+                "key": "NewUserTheme",
+                "title": "Set a default theme for new users",
+                "subtitle": "Apply one custom theme once to each newly created human user or guest account.",
+                "settings": [
+                    {
+                        "key": "DefaultTheme",
+                        "display_name": "Default theme",
+                        "type": "longtext",
+                        "help_text": "Paste a valid Mattermost theme JSON object. Leave blank to use Mattermost's normal default theme.",
+                        "placeholder": "{\n  \"sidebarBg\": \"#145DBF\"\n}",
+                        "default": ""
+                    }
+                ]
+            },
             {
                 "key": "PerUserTheme",
                 "title": "Set a theme for an existing user",
