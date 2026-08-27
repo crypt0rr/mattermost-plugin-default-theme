@@ -128,6 +128,28 @@ func targetThemeRequestKey(c *configuration) string {
 	return c.TargetUsername + "\x00" + c.TargetTheme
 }
 
+func teamSpecificThemePreferences(userID string, preferences []model.Preference) []model.Preference {
+	result := make([]model.Preference, 0)
+	seen := make(map[string]struct{})
+	for _, preference := range preferences {
+		if preference.Category != model.PreferenceCategoryTheme || preference.Name == "" {
+			continue
+		}
+		if _, ok := seen[preference.Name]; ok {
+			continue
+		}
+
+		seen[preference.Name] = struct{}{}
+		result = append(result, model.Preference{
+			UserId:   userID,
+			Category: model.PreferenceCategoryTheme,
+			Name:     preference.Name,
+		})
+	}
+
+	return result
+}
+
 func configWithTargetThemeRequestCleared(original *model.Config) *model.Config {
 	clone := *original
 	clone.PluginSettings = original.PluginSettings
@@ -221,6 +243,14 @@ func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, 
 		return nil, err
 	}
 
+	existingPreferences, appErr := p.API.GetPreferencesForUser(user.Id)
+	if appErr != nil {
+		err := fmt.Errorf("failed to load existing theme preferences for user %s: %w", user.Id, appErr)
+		p.API.LogError(fmt.Sprintf("failed to load existing theme preferences for user %s: %s", user.Id, appErr.Error()))
+		return nil, err
+	}
+	teamSpecificPreferences := teamSpecificThemePreferences(user.Id, existingPreferences)
+
 	preferences := []model.Preference{
 		{
 			UserId:   user.Id,
@@ -233,6 +263,13 @@ func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, 
 		err := fmt.Errorf("failed to apply target theme to user %s: %w", user.Id, appErr)
 		p.API.LogError(fmt.Sprintf("failed to apply target theme to user %s: %s", user.Id, appErr.Error()))
 		return nil, err
+	}
+	if len(teamSpecificPreferences) > 0 {
+		if appErr := p.API.DeletePreferencesForUser(user.Id, teamSpecificPreferences); appErr != nil {
+			err := fmt.Errorf("failed to clear existing team-specific themes for user %s: %w", user.Id, appErr)
+			p.API.LogError(fmt.Sprintf("failed to clear existing team-specific themes for user %s: %s", user.Id, appErr.Error()))
+			return nil, err
+		}
 	}
 
 	p.lastAppliedTargetTheme = requestKey

@@ -6,7 +6,7 @@ set -euo pipefail
 : "${MM_ADMIN_TOKEN:?Set MM_ADMIN_TOKEN to a system administrator token}"
 
 MM_BASE_URL="${MM_BASE_URL%/}"
-PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.2.tar.gz}"
+PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.3.tar.gz}"
 THEME_JSON="${THEME_JSON:-{\"sidebarBg\":\"#145DBF\",\"sidebarText\":\"#FFFFFF\"}}"
 PLUGIN_ID="com.github.crypt0rr.default-theme"
 
@@ -58,6 +58,16 @@ theme_for_user() {
 	'
 }
 
+set_user_theme_preference() {
+	local user_id="$1"
+	local name="$2"
+	local theme="$3"
+	local payload
+	payload="$(jq -n --arg user_id "$user_id" --arg name "$name" --arg theme "$theme" \
+		'[{user_id:$user_id,category:"theme",name:$name,value:$theme}]')"
+	api -X PUT "${MM_BASE_URL}/api/v4/users/${user_id}/preferences" --data "$payload" >/dev/null
+}
+
 username_for_user() {
 	local user_id="$1"
 	api "${MM_BASE_URL}/api/v4/users/${user_id}" | jq -er '.username'
@@ -72,7 +82,7 @@ patch_user_theme() {
 	local theme="$2"
 	local payload
 	payload="$(jq -n --arg username "$username" --arg theme "$theme" \
-		'{PluginSettings:{Plugins:{"com.github.crypt0rr.default-theme":{TargetUsername:$username,TargetTheme:$theme}}}}')"
+		'{PluginSettings:{Plugins:{"com.github.crypt0rr.default-theme":{targetusername:$username,targettheme:$theme}}}}')"
 	api -X PUT "${MM_BASE_URL}/api/v4/config/patch" --data "$payload" >/dev/null
 }
 
@@ -93,12 +103,25 @@ wait_for_theme() {
 
 wait_for_target_request_clear() {
 	for _ in $(seq 1 30); do
-		if plugin_config | jq -e '(.TargetUsername // "") == "" and (.TargetTheme // "") == ""' >/dev/null; then
+		if plugin_config | jq -e '((.TargetUsername // .targetusername // "") == "") and ((.TargetTheme // .targettheme // "") == "")' >/dev/null; then
 			return 0
 		fi
 		sleep 1
 	done
 	echo "Per-user theme request fields were not cleared" >&2
+	return 1
+}
+
+wait_for_no_team_specific_themes() {
+	local user_id="$1"
+	for _ in $(seq 1 30); do
+		if api "${MM_BASE_URL}/api/v4/users/${user_id}/preferences" | jq -e \
+			'all(.[]; .category != "theme" or .name == "")' >/dev/null; then
+			return 0
+		fi
+		sleep 1
+	done
+	echo "Team-specific themes were not cleared for user ${user_id}" >&2
 	return 1
 }
 
@@ -115,6 +138,8 @@ if [[ "$(theme_for_user "$before_user")" != "null" ]]; then
 	exit 1
 fi
 
+set_user_theme_preference "$before_user" "existing-team-theme" '{"sidebarBg":"#000000"}'
+
 patch_theme "$THEME_JSON"
 after_user="$(create_user after)"
 wait_for_theme "$after_user" "$expected_theme"
@@ -127,6 +152,7 @@ fi
 target_username="$(username_for_user "$before_user")"
 patch_user_theme "$target_username" "$target_theme"
 wait_for_theme "$before_user" "$expected_target"
+wait_for_no_team_specific_themes "$before_user"
 wait_for_target_request_clear
 
 if [[ "$(theme_for_user "$after_user")" != "$expected_theme" ]]; then
