@@ -56,7 +56,7 @@ make lint
 make bundle
 ```
 
-The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.0.tar.gz`.
+The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.1.tar.gz`.
 
 The security target requires `govulncheck`; CI installs and pins `v1.7.0` automatically.
 
@@ -69,7 +69,7 @@ Run the smoke test against a disposable Team Edition server with a system admini
 ```sh
 MM_BASE_URL=http://localhost:8065 \
 MM_ADMIN_TOKEN='<system-admin-token>' \
-PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.0.tar.gz \
+PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.1.tar.gz \
 bash scripts/smoke-test.sh
 ```
 

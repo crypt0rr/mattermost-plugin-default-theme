@@ -6,7 +6,7 @@
     "support_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/issues",
     "release_notes_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/releases",
     "icon_path": "assets/default-theme-icon.svg",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "min_server_version": "11.7.0",
     "server": {
         "executables": {
