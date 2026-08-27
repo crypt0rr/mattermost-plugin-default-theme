@@ -119,6 +119,21 @@ func TestConfigurationFromPluginSettings(t *testing.T) {
 	})
 }
 
+func TestTeamSpecificThemePreferences(t *testing.T) {
+	preferences := teamSpecificThemePreferences("user-id", []model.Preference{
+		{UserId: "user-id", Category: model.PreferenceCategoryTheme, Name: "team-a", Value: `{"sidebarBg":"#000000"}`},
+		{UserId: "user-id", Category: model.PreferenceCategoryTheme, Name: "team-a", Value: `{"sidebarBg":"#FFFFFF"}`},
+		{UserId: "user-id", Category: model.PreferenceCategoryTheme, Name: "", Value: testTheme},
+		{UserId: "user-id", Category: model.PreferenceCategoryDisplaySettings, Name: "message_display", Value: "compact"},
+	})
+
+	require.Equal(t, []model.Preference{{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "team-a",
+	}}, preferences)
+}
+
 func TestConfigWithTargetThemeRequestClearedPreservesSettings(t *testing.T) {
 	original := configWithPluginSettings(map[string]any{
 		"DefaultTheme":   testTheme,
@@ -384,6 +399,7 @@ func TestConfigurationWillBeSavedAppliesThemeAndClearsRequest(t *testing.T) {
 	user := &model.User{Id: "user-id", Username: "alice"}
 
 	testAPI.On("GetUserByUsername", "alice").Return(user, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference(nil), (*model.AppError)(nil)).Once()
 	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once().Run(func(args mock.Arguments) {
 		require.Equal(t, "user-id", args.String(0))
 		require.Equal(t, []model.Preference{{
@@ -407,6 +423,48 @@ func TestConfigurationWillBeSavedAppliesThemeAndClearsRequest(t *testing.T) {
 	testAPI.AssertExpectations(t)
 }
 
+func TestConfigurationWillBeSavedRemovesTeamSpecificThemesBeforeApplyingGlobalTheme(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+	teamSpecificTheme := model.Preference{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "team-id",
+		Value:    `{"sidebarBg":"#000000"}`,
+	}
+	globalTheme := model.Preference{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "",
+		Value:    testTheme,
+	}
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id", Username: "alice"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference{
+		teamSpecificTheme,
+		globalTheme,
+		{UserId: "user-id", Category: model.PreferenceCategoryDisplaySettings, Name: "message_display", Value: "compact"},
+	}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", []model.Preference{globalTheme}).Return((*model.AppError)(nil)).Once()
+	testAPI.On("DeletePreferencesForUser", "user-id", []model.Preference{{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "team-id",
+	}}).Return((*model.AppError)(nil)).Once()
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	testAPI.AssertExpectations(t)
+}
+
 func TestConfigurationWillBeSavedAppliesThemeWithMattermostSettingKeyCasing(t *testing.T) {
 	testAPI := &plugintest.API{}
 	p := Plugin{}
@@ -418,6 +476,7 @@ func TestConfigurationWillBeSavedAppliesThemeWithMattermostSettingKeyCasing(t *t
 	})
 
 	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id", Username: "alice"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference(nil), (*model.AppError)(nil)).Once()
 	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once().Run(func(args mock.Arguments) {
 		require.Equal(t, []model.Preference{{
 			UserId:   "user-id",
@@ -446,6 +505,7 @@ func TestConfigurationWillBeSavedAcceptsGuest(t *testing.T) {
 	})
 
 	testAPI.On("GetUserByUsername", "guest").Return(&model.User{Id: "guest-id", Username: "guest", Roles: model.SystemGuestRoleId}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "guest-id").Return([]model.Preference(nil), (*model.AppError)(nil)).Once()
 	testAPI.On("UpdatePreferencesForUser", "guest-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once()
 
 	cleared, err := p.ConfigurationWillBeSaved(config)
@@ -579,12 +639,70 @@ func TestConfigurationWillBeSavedRejectsPreferenceFailures(t *testing.T) {
 	})
 
 	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference(nil), (*model.AppError)(nil)).Once()
 	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return(preferenceErr).Once()
 	testAPI.On("LogError", "failed to apply target theme to user user-id: preference unavailable").Once()
 
 	cleared, err := p.ConfigurationWillBeSaved(config)
 
 	require.ErrorContains(t, err, "failed to apply target theme to user user-id")
+	require.Nil(t, cleared)
+	require.Empty(t, p.lastAppliedTargetTheme)
+	require.Equal(t, testTheme, config.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedRejectsExistingPreferenceLookupFailures(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	preferenceErr := &model.AppError{Message: "preferences unavailable"}
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference(nil), preferenceErr).Once()
+	testAPI.On("LogError", "failed to load existing theme preferences for user user-id: preferences unavailable").Once()
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.ErrorContains(t, err, "failed to load existing theme preferences for user user-id")
+	require.Nil(t, cleared)
+	require.Empty(t, p.lastAppliedTargetTheme)
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedRejectsTeamSpecificPreferenceDeletionFailures(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	deletionErr := &model.AppError{Message: "deletion unavailable"}
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+	teamSpecificPreference := model.Preference{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "team-id",
+		Value:    `{"sidebarBg":"#000000"}`,
+	}
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference{teamSpecificPreference}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once()
+	testAPI.On("DeletePreferencesForUser", "user-id", []model.Preference{{
+		UserId:   "user-id",
+		Category: model.PreferenceCategoryTheme,
+		Name:     "team-id",
+	}}).Return(deletionErr).Once()
+	testAPI.On("LogError", "failed to clear existing team-specific themes for user user-id: deletion unavailable").Once()
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.ErrorContains(t, err, "failed to clear existing team-specific themes for user user-id")
 	require.Nil(t, cleared)
 	require.Empty(t, p.lastAppliedTargetTheme)
 	require.Equal(t, testTheme, config.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
@@ -601,6 +719,7 @@ func TestConfigurationWillBeSavedSerializesDuplicateRequests(t *testing.T) {
 	})
 
 	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("GetPreferencesForUser", "user-id").Return([]model.Preference(nil), (*model.AppError)(nil)).Once()
 	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once()
 
 	results := make([]*model.Config, 2)

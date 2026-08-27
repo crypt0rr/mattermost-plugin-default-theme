@@ -8,7 +8,7 @@ The plugin is server-only. An administrator pastes a custom theme JSON object in
 
 The global setting does not change existing users. Users can select a different theme afterward. Clearing the setting restores Mattermost's normal behavior for future users. Bot accounts are ignored.
 
-Administrators can also assign a theme once to one existing user or guest at a time. Select the target username, paste the target theme JSON, and save the settings. The plugin writes that user's theme preference and clears both request fields after a successful save. Missing users, bots, incomplete requests, invalid JSON, and preference failures are rejected without clearing the request.
+Administrators can also assign a theme once to one existing user or guest at a time. Select the target username, paste the target theme JSON, and save the settings. The plugin removes any existing team-specific theme preferences for that user, writes the global theme preference, and clears both request fields after a successful save. This makes the assigned theme effective across the user's teams; the user can select another theme afterward. Missing users, bots, incomplete requests, invalid JSON, and preference failures are rejected without clearing the request.
 
 The plugin never enforces a theme, reacts to later preference changes, backfills users, exposes an API, or stores data outside Mattermost's plugin configuration. A user can choose another theme after either kind of assignment. Removing or downgrading the plugin does not remove preferences that it has already written.
 
@@ -41,7 +41,7 @@ To assign a theme to an existing account:
 3. Save the settings once. The two target fields clear after the preference is written.
 4. Confirm the user can subsequently select another theme.
 
-The global and target theme settings accept a JSON object whose values are strings. Invalid JSON is rejected by the plugin and the last valid in-memory configuration remains active. Mattermost may normalize or sanitize theme values when it stores the preference. A target username and target theme must be provided together; a blank target theme is not a reset operation. To retry a failed target assignment, correct the fields and save again.
+The global and target theme settings accept a JSON object whose values are strings. Invalid JSON is rejected by the plugin and the last valid in-memory configuration remains active. Mattermost may normalize or sanitize theme values when it stores the preference. A target username and target theme must be provided together; a blank target theme is not a reset operation. If loading or clearing the user's existing theme preferences fails, the assignment is rejected and the request fields remain available for retry. To retry a failed target assignment, correct the fields and save again.
 
 ## Development
 
@@ -56,7 +56,7 @@ make lint
 make bundle
 ```
 
-The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.2.tar.gz`.
+The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.3.tar.gz`.
 
 The security target requires `govulncheck`; CI installs and pins `v1.7.0` automatically.
 
@@ -69,7 +69,7 @@ Run the smoke test against a disposable Team Edition server with a system admini
 ```sh
 MM_BASE_URL=http://localhost:8065 \
 MM_ADMIN_TOKEN='<system-admin-token>' \
-PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.2.tar.gz \
+PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.3.tar.gz \
 bash scripts/smoke-test.sh
 ```
 

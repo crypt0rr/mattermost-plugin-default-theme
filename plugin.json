@@ -6,7 +6,7 @@
     "support_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/issues",
     "release_notes_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/releases",
     "icon_path": "assets/default-theme-icon.svg",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "min_server_version": "11.7.0",
     "server": {
         "executables": {
@@ -42,7 +42,7 @@
                 "title": "Set a theme for an existing user",
                 "subtitle": "Apply one custom theme to one human user or guest account.",
                 "header": "Enter both fields and save to apply the theme once. The fields clear after a successful save.",
-                "footer": "The operation does not enforce the theme. Invalid users, bots, incomplete requests, and invalid JSON are rejected.",
+                "footer": "Existing team-specific themes are cleared so this assignment is effective across the user's teams. The operation does not enforce the theme. Invalid users, bots, incomplete requests, and invalid JSON are rejected.",
                 "settings": [
                     {
                         "key": "TargetUsername",
