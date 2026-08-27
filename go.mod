@@ -3,7 +3,7 @@ module github.com/crypt0rr/mattermost-plugin-default-theme
 go 1.25.13
 
 require (
-	github.com/hashicorp/go-plugin v1.7.0
+	github.com/hashicorp/go-plugin v1.8.0
 	github.com/mattermost/mattermost/server/public v0.4.0
 	github.com/stretchr/testify v1.11.1
 )
