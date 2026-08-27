@@ -140,6 +140,44 @@ func TestConfigWithTargetThemeRequestClearedPreservesSettings(t *testing.T) {
 	require.Equal(t, `{"sidebarBg":"#FFFFFF"}`, original.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
 }
 
+func TestConfigWithTargetThemeRequestClearedHandlesMattermostSettingKeyCasing(t *testing.T) {
+	original := configWithPluginSettings(map[string]any{
+		"defaulttheme":   testTheme,
+		"targetusername": "alice",
+		"targettheme":    `{"sidebarBg":"#FFFFFF"}`,
+		"OtherSetting":   "preserved",
+	})
+
+	cleared := configWithTargetThemeRequestCleared(original)
+	settings := cleared.PluginSettings.Plugins[defaultThemePluginID]
+
+	require.Empty(t, settings["targetusername"])
+	require.Empty(t, settings["targettheme"])
+	require.Equal(t, testTheme, settings["defaulttheme"])
+	require.Equal(t, "preserved", settings["OtherSetting"])
+	_, hasUppercaseUsernameKey := settings["TargetUsername"]
+	_, hasUppercaseThemeKey := settings["TargetTheme"]
+	require.False(t, hasUppercaseUsernameKey)
+	require.False(t, hasUppercaseThemeKey)
+	require.Equal(t, "alice", original.PluginSettings.Plugins[defaultThemePluginID]["targetusername"])
+	require.Equal(t, `{"sidebarBg":"#FFFFFF"}`, original.PluginSettings.Plugins[defaultThemePluginID]["targettheme"])
+}
+
+func TestConfigWithTargetThemeRequestClearedAddsMissingRequestKeys(t *testing.T) {
+	original := configWithPluginSettings(map[string]any{
+		"DefaultTheme": testTheme,
+		"OtherSetting": "preserved",
+	})
+
+	cleared := configWithTargetThemeRequestCleared(original)
+	settings := cleared.PluginSettings.Plugins[defaultThemePluginID]
+
+	require.Empty(t, settings["TargetUsername"])
+	require.Empty(t, settings["TargetTheme"])
+	require.Equal(t, testTheme, settings["DefaultTheme"])
+	require.Equal(t, "preserved", settings["OtherSetting"])
+}
+
 func TestValidateTheme(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -366,6 +404,35 @@ func TestConfigurationWillBeSavedAppliesThemeAndClearsRequest(t *testing.T) {
 	require.Equal(t, "preserved", cleared.PluginSettings.Plugins[defaultThemePluginID]["OtherSetting"])
 	require.Equal(t, "  alice  ", config.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
 	require.NotEmpty(t, p.lastAppliedTargetTheme)
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedAppliesThemeWithMattermostSettingKeyCasing(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"defaulttheme":   testTheme,
+		"targetusername": "alice",
+		"targettheme":    testTheme,
+	})
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id", Username: "alice"}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once().Run(func(args mock.Arguments) {
+		require.Equal(t, []model.Preference{{
+			UserId:   "user-id",
+			Category: model.PreferenceCategoryTheme,
+			Name:     "",
+			Value:    testTheme,
+		}}, args.Get(1))
+	})
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["targetusername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["targettheme"])
+	require.Equal(t, testTheme, cleared.PluginSettings.Plugins[defaultThemePluginID]["defaulttheme"])
 	testAPI.AssertExpectations(t)
 }
 

@@ -137,11 +137,27 @@ func configWithTargetThemeRequestCleared(original *model.Config) *model.Config {
 	}
 
 	settings := make(map[string]any, len(original.PluginSettings.Plugins[defaultThemePluginID])+2)
+	usernameKeyFound := false
+	themeKeyFound := false
 	for key, value := range original.PluginSettings.Plugins[defaultThemePluginID] {
+		if strings.EqualFold(key, "TargetUsername") {
+			settings[key] = ""
+			usernameKeyFound = true
+			continue
+		}
+		if strings.EqualFold(key, "TargetTheme") {
+			settings[key] = ""
+			themeKeyFound = true
+			continue
+		}
 		settings[key] = value
 	}
-	settings["TargetUsername"] = ""
-	settings["TargetTheme"] = ""
+	if !usernameKeyFound {
+		settings["TargetUsername"] = ""
+	}
+	if !themeKeyFound {
+		settings["TargetTheme"] = ""
+	}
 	clone.PluginSettings.Plugins[defaultThemePluginID] = settings
 
 	return &clone

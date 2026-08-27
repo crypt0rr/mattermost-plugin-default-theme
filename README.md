@@ -31,12 +31,12 @@ The supported range is Mattermost Team Edition `v11.7.0` through `v11.10.x`. Ver
 
 3. Install and enable the plugin.
 4. Open **System Console → Plugins → Default Theme**.
-5. Paste the exported JSON into **Default theme** and save.
+5. In **Set a default theme for new users**, paste the exported JSON into **Default theme** and save.
 6. Create a test account and confirm its theme.
 
 To assign a theme to an existing account:
 
-1. Select an existing human username or guest in **Target username**.
+1. In **Set a theme for an existing user**, select an existing human username or guest in **Target username**.
 2. Paste the exported JSON into **Target theme**.
 3. Save the settings once. The two target fields clear after the preference is written.
 4. Confirm the user can subsequently select another theme.
@@ -56,7 +56,7 @@ make lint
 make bundle
 ```
 
-The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.1.tar.gz`.
+The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.2.tar.gz`.
 
 The security target requires `govulncheck`; CI installs and pins `v1.7.0` automatically.
 
@@ -69,7 +69,7 @@ Run the smoke test against a disposable Team Edition server with a system admini
 ```sh
 MM_BASE_URL=http://localhost:8065 \
 MM_ADMIN_TOKEN='<system-admin-token>' \
-PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.1.tar.gz \
+PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.2.tar.gz \
 bash scripts/smoke-test.sh
 ```
 
