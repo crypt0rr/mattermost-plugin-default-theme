@@ -53,6 +53,93 @@ func TestGetConfigurationReturnsSnapshot(t *testing.T) {
 	require.Equal(t, `{"sidebarBg":"#145DBF"}`, p.getConfiguration().DefaultTheme)
 }
 
+func configWithPluginSettings(settings map[string]any) *model.Config {
+	return &model.Config{
+		PluginSettings: model.PluginSettings{
+			Plugins: map[string]map[string]any{
+				defaultThemePluginID: settings,
+			},
+		},
+	}
+}
+
+func TestValidateTargetTheme(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		theme    string
+		wantErr  string
+	}{
+		{name: "blank request"},
+		{name: "missing username", theme: testTheme, wantErr: "target username is required"},
+		{name: "missing theme", username: "alice", wantErr: "target theme is required"},
+		{name: "valid request", username: "alice", theme: testTheme},
+		{name: "invalid theme", username: "alice", theme: `{"sidebarBg":123}`, wantErr: "must be a string"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateTargetTheme(test.username, test.theme)
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestConfigurationFromPluginSettings(t *testing.T) {
+	t.Run("decodes settings", func(t *testing.T) {
+		settings := map[string]any{
+			"DefaultTheme":   testTheme,
+			"TargetUsername": "alice",
+			"TargetTheme":    `{"sidebarBg":"#FFFFFF"}`,
+		}
+
+		configuration, err := configurationFromPluginSettings(settings)
+
+		require.NoError(t, err)
+		require.Equal(t, testTheme, configuration.DefaultTheme)
+		require.Equal(t, "alice", configuration.TargetUsername)
+		require.Equal(t, `{"sidebarBg":"#FFFFFF"}`, configuration.TargetTheme)
+	})
+
+	t.Run("rejects values that cannot be encoded", func(t *testing.T) {
+		_, err := configurationFromPluginSettings(map[string]any{"DefaultTheme": func() {}})
+
+		require.ErrorContains(t, err, "failed to encode plugin configuration")
+	})
+
+	t.Run("rejects values that cannot be decoded", func(t *testing.T) {
+		_, err := configurationFromPluginSettings(map[string]any{"DefaultTheme": 123})
+
+		require.ErrorContains(t, err, "failed to decode plugin configuration")
+	})
+}
+
+func TestConfigWithTargetThemeRequestClearedPreservesSettings(t *testing.T) {
+	original := configWithPluginSettings(map[string]any{
+		"DefaultTheme":   testTheme,
+		"TargetUsername": "alice",
+		"TargetTheme":    `{"sidebarBg":"#FFFFFF"}`,
+		"OtherSetting":   "preserved",
+	})
+	original.PluginSettings.Plugins["other.plugin"] = map[string]any{"value": "preserved"}
+
+	cleared := configWithTargetThemeRequestCleared(original)
+
+	require.NotSame(t, original, cleared)
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	require.Equal(t, testTheme, cleared.PluginSettings.Plugins[defaultThemePluginID]["DefaultTheme"])
+	require.Equal(t, "preserved", cleared.PluginSettings.Plugins[defaultThemePluginID]["OtherSetting"])
+	require.Equal(t, map[string]any{"value": "preserved"}, cleared.PluginSettings.Plugins["other.plugin"])
+	require.Equal(t, "alice", original.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Equal(t, `{"sidebarBg":"#FFFFFF"}`, original.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+}
+
 func TestValidateTheme(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -177,6 +264,295 @@ func TestOnConfigurationChangeKeepsPreviousThemeOnLoadError(t *testing.T) {
 
 	require.ErrorIs(t, err, loadError)
 	require.Equal(t, previousTheme, p.getConfiguration().DefaultTheme)
+	testAPI.AssertExpectations(t)
+}
+
+func TestOnConfigurationChangeLoadsTargetFieldsWithoutApplyingThem(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+
+	loadConfiguration := testAPI.On("LoadPluginConfiguration", mock.AnythingOfType("*main.configuration"))
+	loadConfiguration.Return(nil).Run(func(args mock.Arguments) {
+		loaded := args.Get(0).(*configuration)
+		loaded.DefaultTheme = testTheme
+		loaded.TargetUsername = "alice"
+		loaded.TargetTheme = `{"sidebarBg":"#FFFFFF"}`
+	})
+
+	require.NoError(t, p.OnConfigurationChange())
+	require.Equal(t, configuration{
+		DefaultTheme:   testTheme,
+		TargetUsername: "alice",
+		TargetTheme:    `{"sidebarBg":"#FFFFFF"}`,
+	}, p.getConfiguration())
+	testAPI.AssertExpectations(t)
+}
+
+func TestOnConfigurationChangeResetsAppliedTargetRequestState(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	p.lastAppliedTargetTheme = "already-applied"
+
+	loadConfiguration := testAPI.On("LoadPluginConfiguration", mock.AnythingOfType("*main.configuration"))
+	loadConfiguration.Return(nil)
+
+	require.NoError(t, p.OnConfigurationChange())
+	require.Empty(t, p.lastAppliedTargetTheme)
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedHandlesNilAndMissingPluginConfiguration(t *testing.T) {
+	p := Plugin{}
+
+	cleared, err := p.ConfigurationWillBeSaved(nil)
+	require.ErrorContains(t, err, "configuration cannot be nil")
+	require.Nil(t, cleared)
+
+	empty := &model.Config{}
+	unchanged, err := p.ConfigurationWillBeSaved(empty)
+	require.NoError(t, err)
+	require.Same(t, empty, unchanged)
+}
+
+func TestConfigurationWillBeSavedSkipsBlankTargetRequest(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"DefaultTheme":   testTheme,
+		"TargetUsername": " \n\t",
+		"TargetTheme":    " \t",
+	})
+
+	unchanged, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.Same(t, config, unchanged)
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedAppliesThemeAndClearsRequest(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"DefaultTheme":   testTheme,
+		"TargetUsername": "  alice  ",
+		"TargetTheme":    "\n{\"sidebarBg\":\"#FFFFFF\"}\t",
+		"OtherSetting":   "preserved",
+	})
+	user := &model.User{Id: "user-id", Username: "alice"}
+
+	testAPI.On("GetUserByUsername", "alice").Return(user, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once().Run(func(args mock.Arguments) {
+		require.Equal(t, "user-id", args.String(0))
+		require.Equal(t, []model.Preference{{
+			UserId:   "user-id",
+			Category: model.PreferenceCategoryTheme,
+			Name:     "",
+			Value:    `{"sidebarBg":"#FFFFFF"}`,
+		}}, args.Get(1))
+	})
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.NotSame(t, config, cleared)
+	require.Equal(t, testTheme, cleared.PluginSettings.Plugins[defaultThemePluginID]["DefaultTheme"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	require.Equal(t, "preserved", cleared.PluginSettings.Plugins[defaultThemePluginID]["OtherSetting"])
+	require.Equal(t, "  alice  ", config.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.NotEmpty(t, p.lastAppliedTargetTheme)
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedAcceptsGuest(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "guest",
+		"TargetTheme":    testTheme,
+	})
+
+	testAPI.On("GetUserByUsername", "guest").Return(&model.User{Id: "guest-id", Username: "guest", Roles: model.SystemGuestRoleId}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "guest-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once()
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedDoesNotRepeatSameRequest(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+	p.lastAppliedTargetTheme = targetThemeRequestKey(&configuration{TargetUsername: "alice", TargetTheme: testTheme})
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.NoError(t, err)
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+	require.Empty(t, cleared.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedRejectsInvalidPluginConfiguration(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings map[string]any
+		wantErr  string
+	}{
+		{
+			name:     "unencodable settings",
+			settings: map[string]any{"DefaultTheme": func() {}},
+			wantErr:  "failed to encode plugin configuration",
+		},
+		{
+			name:     "wrong field type",
+			settings: map[string]any{"DefaultTheme": 123},
+			wantErr:  "failed to decode plugin configuration",
+		},
+		{
+			name:     "incomplete target request",
+			settings: map[string]any{"TargetUsername": "alice"},
+			wantErr:  "target theme is required",
+		},
+		{
+			name:     "invalid target theme",
+			settings: map[string]any{"TargetUsername": "alice", "TargetTheme": `{"sidebarBg":123}`},
+			wantErr:  "must be a string",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testAPI := &plugintest.API{}
+			p := Plugin{}
+			p.SetAPI(testAPI)
+			testAPI.On("LogError", mock.MatchedBy(func(message string) bool {
+				return strings.Contains(message, test.wantErr)
+			})).Once()
+
+			cleared, err := p.ConfigurationWillBeSaved(configWithPluginSettings(test.settings))
+
+			require.ErrorContains(t, err, test.wantErr)
+			require.Nil(t, cleared)
+			testAPI.AssertExpectations(t)
+		})
+	}
+}
+
+func TestConfigurationWillBeSavedRejectsUnavailableAPI(t *testing.T) {
+	p := Plugin{}
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.ErrorContains(t, err, "plugin API is unavailable")
+	require.Nil(t, cleared)
+}
+
+func TestConfigurationWillBeSavedRejectsTargetLookupFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		user    *model.User
+		appErr  *model.AppError
+		wantErr string
+	}{
+		{name: "not found", wantErr: "was not found"},
+		{name: "lookup error", appErr: &model.AppError{Message: "lookup unavailable"}, wantErr: "failed to resolve target user"},
+		{name: "bot", user: &model.User{Id: "bot-id", IsBot: true}, wantErr: "is a bot"},
+		{name: "empty ID", user: &model.User{Username: "alice"}, wantErr: "has no user ID"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testAPI := &plugintest.API{}
+			p := Plugin{}
+			p.SetAPI(testAPI)
+			testAPI.On("GetUserByUsername", "alice").Return(test.user, test.appErr).Once()
+			testAPI.On("LogError", mock.MatchedBy(func(message string) bool {
+				return strings.Contains(message, test.wantErr)
+			})).Once()
+
+			cleared, err := p.ConfigurationWillBeSaved(configWithPluginSettings(map[string]any{
+				"TargetUsername": "alice",
+				"TargetTheme":    testTheme,
+			}))
+
+			require.ErrorContains(t, err, test.wantErr)
+			require.Nil(t, cleared)
+			testAPI.AssertExpectations(t)
+		})
+	}
+}
+
+func TestConfigurationWillBeSavedRejectsPreferenceFailures(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	preferenceErr := &model.AppError{Message: "preference unavailable"}
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return(preferenceErr).Once()
+	testAPI.On("LogError", "failed to apply target theme to user user-id: preference unavailable").Once()
+
+	cleared, err := p.ConfigurationWillBeSaved(config)
+
+	require.ErrorContains(t, err, "failed to apply target theme to user user-id")
+	require.Nil(t, cleared)
+	require.Empty(t, p.lastAppliedTargetTheme)
+	require.Equal(t, testTheme, config.PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	testAPI.AssertExpectations(t)
+}
+
+func TestConfigurationWillBeSavedSerializesDuplicateRequests(t *testing.T) {
+	testAPI := &plugintest.API{}
+	p := Plugin{}
+	p.SetAPI(testAPI)
+	config := configWithPluginSettings(map[string]any{
+		"TargetUsername": "alice",
+		"TargetTheme":    testTheme,
+	})
+
+	testAPI.On("GetUserByUsername", "alice").Return(&model.User{Id: "user-id"}, (*model.AppError)(nil)).Once()
+	testAPI.On("UpdatePreferencesForUser", "user-id", mock.AnythingOfType("[]model.Preference")).Return((*model.AppError)(nil)).Once()
+
+	results := make([]*model.Config, 2)
+	errors := make([]error, 2)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(len(results))
+	for index := range results {
+		go func(index int) {
+			defer waitGroup.Done()
+			results[index], errors[index] = p.ConfigurationWillBeSaved(config)
+		}(index)
+	}
+	waitGroup.Wait()
+
+	for index := range results {
+		require.NoError(t, errors[index])
+		require.Empty(t, results[index].PluginSettings.Plugins[defaultThemePluginID]["TargetUsername"])
+		require.Empty(t, results[index].PluginSettings.Plugins[defaultThemePluginID]["TargetTheme"])
+	}
 	testAPI.AssertExpectations(t)
 }
 
