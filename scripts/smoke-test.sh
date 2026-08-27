@@ -6,7 +6,7 @@ set -euo pipefail
 : "${MM_ADMIN_TOKEN:?Set MM_ADMIN_TOKEN to a system administrator token}"
 
 MM_BASE_URL="${MM_BASE_URL%/}"
-PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.0.tar.gz}"
+PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.1.tar.gz}"
 THEME_JSON="${THEME_JSON:-{\"sidebarBg\":\"#145DBF\",\"sidebarText\":\"#FFFFFF\"}}"
 PLUGIN_ID="com.github.crypt0rr.default-theme"
 
