@@ -1,0 +1,4 @@
+bin/
+dist/
+server/dist/
+coverage.out

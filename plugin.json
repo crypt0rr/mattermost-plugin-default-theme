@@ -1,0 +1,34 @@
+{
+    "id": "com.github.crypt0rr.default-theme",
+    "name": "Default Theme",
+    "description": "Apply an administrator-selected theme to newly created users.",
+    "homepage_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme",
+    "support_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/issues",
+    "release_notes_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/releases",
+    "icon_path": "assets/default-theme-icon.svg",
+    "version": "0.1.0",
+    "min_server_version": "11.7.0",
+    "server": {
+        "executables": {
+            "linux-amd64": "server/dist/plugin-linux-amd64",
+            "linux-arm64": "server/dist/plugin-linux-arm64",
+            "darwin-amd64": "server/dist/plugin-darwin-amd64",
+            "darwin-arm64": "server/dist/plugin-darwin-arm64",
+            "windows-amd64": "server/dist/plugin-windows-amd64.exe"
+        }
+    },
+    "settings_schema": {
+        "header": "Set a theme for newly created users. Existing users are not changed.",
+        "footer": "Paste the JSON exported from a Mattermost custom theme.",
+        "settings": [
+            {
+                "key": "DefaultTheme",
+                "display_name": "Default theme",
+                "type": "longtext",
+                "help_text": "Paste a valid Mattermost theme JSON object. Leave blank to use Mattermost's normal default theme.",
+                "placeholder": "{\n  \"sidebarBg\": \"#145DBF\"\n}",
+                "default": ""
+            }
+        ]
+    }
+}
