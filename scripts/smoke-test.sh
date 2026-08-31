@@ -6,7 +6,7 @@ set -euo pipefail
 : "${MM_ADMIN_TOKEN:?Set MM_ADMIN_TOKEN to a system administrator token}"
 
 MM_BASE_URL="${MM_BASE_URL%/}"
-PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.4.tar.gz}"
+PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.3.0.tar.gz}"
 THEME_JSON="${THEME_JSON:-{\"sidebarBg\":\"#145DBF\",\"sidebarText\":\"#FFFFFF\"}}"
 PLUGIN_ID="com.github.crypt0rr.default-theme"
 
@@ -68,24 +68,6 @@ set_user_theme_preference() {
 	api -X PUT "${MM_BASE_URL}/api/v4/users/${user_id}/preferences" --data "$payload" >/dev/null
 }
 
-username_for_user() {
-	local user_id="$1"
-	api "${MM_BASE_URL}/api/v4/users/${user_id}" | jq -er '.username'
-}
-
-plugin_config() {
-	api "${MM_BASE_URL}/api/v4/config" | jq -c '.PluginSettings.Plugins["com.github.crypt0rr.default-theme"]'
-}
-
-patch_user_theme() {
-	local username="$1"
-	local theme="$2"
-	local payload
-	payload="$(jq -n --arg username "$username" --arg theme "$theme" \
-		'{PluginSettings:{Plugins:{"com.github.crypt0rr.default-theme":{targetusername:$username,targettheme:$theme}}}}')"
-	api -X PUT "${MM_BASE_URL}/api/v4/config/patch" --data "$payload" >/dev/null
-}
-
 wait_for_theme() {
 	local user_id="$1"
 	local expected="$2"
@@ -101,35 +83,9 @@ wait_for_theme() {
 	return 1
 }
 
-wait_for_target_request_clear() {
-	for _ in $(seq 1 30); do
-		if plugin_config | jq -e '((.TargetUsername // .targetusername // "") == "") and ((.TargetTheme // .targettheme // "") == "")' >/dev/null; then
-			return 0
-		fi
-		sleep 1
-	done
-	echo "Per-user theme request fields were not cleared" >&2
-	return 1
-}
-
-wait_for_no_team_specific_themes() {
-	local user_id="$1"
-	for _ in $(seq 1 30); do
-		if api "${MM_BASE_URL}/api/v4/users/${user_id}/preferences" | jq -e \
-			'all(.[]; .category != "theme" or .name == "")' >/dev/null; then
-			return 0
-		fi
-		sleep 1
-	done
-	echo "Team-specific themes were not cleared for user ${user_id}" >&2
-	return 1
-}
-
 expected_theme="$(jq -cS . <<<"${THEME_JSON}")"
 override_theme='{"sidebarBg":"#000000"}'
 expected_override="$(jq -cS . <<<"${override_theme}")"
-target_theme='{"sidebarBg":"#FFFFFF","sidebarText":"#000000"}'
-expected_target="$(jq -cS . <<<"${target_theme}")"
 
 patch_theme ""
 before_user="$(create_user before)"
@@ -137,8 +93,6 @@ if [[ "$(theme_for_user "$before_user")" != "null" ]]; then
 	echo "A user created before configuration unexpectedly received a theme" >&2
 	exit 1
 fi
-
-set_user_theme_preference "$before_user" "existing-team-theme" '{"sidebarBg":"#000000"}'
 
 patch_theme "$THEME_JSON"
 after_user="$(create_user after)"
@@ -149,20 +103,7 @@ if [[ "$(theme_for_user "$before_user")" != "null" ]]; then
 	exit 1
 fi
 
-target_username="$(username_for_user "$before_user")"
-patch_user_theme "$target_username" "$target_theme"
-wait_for_theme "$before_user" "$expected_target"
-wait_for_no_team_specific_themes "$before_user"
-wait_for_target_request_clear
-
-if [[ "$(theme_for_user "$after_user")" != "$expected_theme" ]]; then
-	echo "A non-target existing user was modified by the per-user assignment" >&2
-	exit 1
-fi
-
-override_payload="$(jq -n --arg user_id "$before_user" --arg value "$override_theme" \
-	'[{user_id:$user_id,category:"theme",name:"",value:$value}]')"
-api -X PUT "${MM_BASE_URL}/api/v4/users/${before_user}/preferences" --data "$override_payload" >/dev/null
+set_user_theme_preference "$before_user" "" "$override_theme"
 wait_for_theme "$before_user" "$expected_override"
 
 patch_theme '{"sidebarBg":"#2F81F7","sidebarText":"#FFFFFF"}'

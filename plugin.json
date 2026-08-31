@@ -1,12 +1,12 @@
 {
     "id": "com.github.crypt0rr.default-theme",
     "name": "Default Theme",
-    "description": "Apply an administrator-selected theme to newly created users or one existing user.",
+    "description": "Apply an administrator-selected theme to newly created users.",
     "homepage_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme",
     "support_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/issues",
     "release_notes_url": "https://github.com/crypt0rr/mattermost-plugin-default-theme/releases",
     "icon_path": "assets/default-theme-icon.svg",
-    "version": "0.2.4",
+    "version": "0.3.0",
     "min_server_version": "11.7.0",
     "server": {
         "executables": {
@@ -18,7 +18,7 @@
         }
     },
     "settings_schema": {
-        "header": "Set a theme for newly created users or apply one theme to one existing user.",
+        "header": "Set a theme for newly created users.",
         "footer": "Paste the JSON exported from a Mattermost custom theme.",
         "settings": [],
         "sections": [
@@ -32,31 +32,6 @@
                         "display_name": "Default theme",
                         "type": "longtext",
                         "help_text": "Paste a valid Mattermost theme JSON object. Leave blank to use Mattermost's normal default theme.",
-                        "placeholder": "{\n  \"sidebarBg\": \"#145DBF\"\n}",
-                        "default": ""
-                    }
-                ]
-            },
-            {
-                "key": "PerUserTheme",
-                "title": "Set a theme for an existing user",
-                "subtitle": "Apply one custom theme to one human user or guest account.",
-                "header": "Enter both fields and save to apply the theme once. The fields clear after a successful save.",
-                "footer": "Existing team-specific themes are cleared so this assignment is effective across the user's teams. The operation does not enforce the theme. Invalid users, bots, incomplete requests, and invalid JSON are rejected.",
-                "settings": [
-                    {
-                        "key": "TargetUsername",
-                        "display_name": "Target username",
-                        "type": "username",
-                        "help_text": "Select the existing human user or guest who should receive the theme.",
-                        "placeholder": "username",
-                        "default": ""
-                    },
-                    {
-                        "key": "TargetTheme",
-                        "display_name": "Target theme",
-                        "type": "longtext",
-                        "help_text": "Paste a valid Mattermost theme JSON object. Both target fields are required for a per-user assignment.",
                         "placeholder": "{\n  \"sidebarBg\": \"#145DBF\"\n}",
                         "default": ""
                     }

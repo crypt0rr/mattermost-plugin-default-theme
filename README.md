@@ -4,13 +4,11 @@ Set the default Mattermost theme for newly created users.
 
 ## Behavior
 
-The plugin is server-only. An administrator pastes a custom theme JSON object into the plugin settings in **System Console → Plugins → Default Theme**. The plugin applies the global value once, when a human user is created.
+The plugin is server-only. An administrator pastes a custom theme JSON object into the plugin settings in **System Console → Plugins → Default Theme**. The plugin applies the global value once, when a human user or guest account is created.
 
 The global setting does not change existing users. Users can select a different theme afterward. Clearing the setting restores Mattermost's normal behavior for future users. Bot accounts are ignored.
 
-Administrators can also assign a theme once to one existing user or guest at a time. Select the target username, paste the target theme JSON, and save the settings. The plugin removes any existing team-specific theme preferences for that user, writes the global theme preference, and clears both request fields after a successful save. This makes the assigned theme effective across the user's teams; the user can select another theme afterward. Missing users, bots, incomplete requests, invalid JSON, and preference failures are rejected without clearing the request.
-
-The plugin never enforces a theme, reacts to later preference changes, backfills users, exposes an API, or stores data outside Mattermost's plugin configuration. A user can choose another theme after either kind of assignment. Removing or downgrading the plugin does not remove preferences that it has already written.
+The plugin never enforces a theme, reacts to later preference changes, backfills existing users, exposes an API, or stores data outside Mattermost's plugin configuration. Users can select another theme afterward. Removing or downgrading the plugin does not remove preferences that it has already written.
 
 ## Compatibility
 
@@ -34,14 +32,7 @@ The supported range is Mattermost Team Edition `v11.7.0` through `v11.10.x`. Ver
 5. In **Set a default theme for new users**, paste the exported JSON into **Default theme** and save.
 6. Create a test account and confirm its theme.
 
-To assign a theme to an existing account:
-
-1. In **Set a theme for an existing user**, select an existing human username or guest in **Target username**.
-2. Paste the exported JSON into **Target theme**.
-3. Save the settings once. The two target fields clear after the preference is written.
-4. Confirm the user can subsequently select another theme.
-
-The global and target theme settings accept a JSON object whose values are strings. Invalid JSON is rejected by the plugin and the last valid in-memory configuration remains active. Mattermost may normalize or sanitize theme values when it stores the preference. A target username and target theme must be provided together; a blank target theme is not a reset operation. If loading or clearing the user's existing theme preferences fails, the assignment is rejected and the request fields remain available for retry. To retry a failed target assignment, correct the fields and save again.
+The default theme setting accepts a JSON object whose values are strings. Invalid JSON is rejected by the plugin and the last valid in-memory configuration remains active. Mattermost may normalize or sanitize theme values when it stores the preference.
 
 ## Development
 
@@ -56,7 +47,7 @@ make lint
 make bundle
 ```
 
-The bundle is written to `dist/com.github.crypt0rr.default-theme-0.2.4.tar.gz`.
+The bundle is written to `dist/com.github.crypt0rr.default-theme-0.3.0.tar.gz`.
 
 The security target requires `govulncheck`; CI installs and pins `v1.7.0` automatically.
 
@@ -69,7 +60,7 @@ Run the smoke test against a disposable Team Edition server with a system admini
 ```sh
 MM_BASE_URL=http://localhost:8065 \
 MM_ADMIN_TOKEN='<system-admin-token>' \
-PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.2.4.tar.gz \
+PLUGIN_BUNDLE=dist/com.github.crypt0rr.default-theme-0.3.0.tar.gz \
 bash scripts/smoke-test.sh
 ```
 
