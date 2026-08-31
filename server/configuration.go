@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -10,13 +9,9 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-const defaultThemePluginID = "com.github.crypt0rr.default-theme"
-
 // configuration contains the settings exposed through the Mattermost System Console.
 type configuration struct {
-	DefaultTheme   string
-	TargetUsername string
-	TargetTheme    string
+	DefaultTheme string
 }
 
 func (c *configuration) Clone() *configuration {
@@ -48,19 +43,6 @@ func (p *Plugin) setConfiguration(next *configuration) {
 
 func (c *configuration) normalize() {
 	c.DefaultTheme = strings.TrimSpace(c.DefaultTheme)
-	c.TargetUsername = strings.TrimSpace(c.TargetUsername)
-	c.TargetTheme = strings.TrimSpace(c.TargetTheme)
-}
-
-func (c configuration) hasTargetThemeRequest() bool {
-	return c.TargetUsername != "" || c.TargetTheme != ""
-}
-
-func (p *Plugin) resetTargetThemeRequestState() {
-	p.targetThemeRequestLock.Lock()
-	defer p.targetThemeRequestLock.Unlock()
-
-	p.lastAppliedTargetTheme = ""
 }
 
 // OnConfigurationChange loads and validates the System Console settings.
@@ -77,9 +59,6 @@ func (p *Plugin) OnConfigurationChange() error {
 	}
 
 	p.setConfiguration(next)
-	if !next.hasTargetThemeRequest() {
-		p.resetTargetThemeRequestState()
-	}
 	return nil
 }
 
@@ -88,192 +67,7 @@ func validateConfiguration(c *configuration) error {
 		return fmt.Errorf("invalid default theme configuration: %w", err)
 	}
 
-	if err := validateTargetTheme(c.TargetUsername, c.TargetTheme); err != nil {
-		return fmt.Errorf("invalid target theme configuration: %w", err)
-	}
-
 	return nil
-}
-
-func validateTargetTheme(username, theme string) error {
-	if username == "" && theme == "" {
-		return nil
-	}
-	if username == "" {
-		return errors.New("target username is required when target theme is provided")
-	}
-	if theme == "" {
-		return errors.New("target theme is required when target username is provided")
-	}
-
-	return validateTheme(theme)
-}
-
-func configurationFromPluginSettings(settings map[string]any) (*configuration, error) {
-	encoded, err := json.Marshal(settings)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode plugin configuration: %w", err)
-	}
-
-	result := new(configuration)
-	if err := json.Unmarshal(encoded, result); err != nil {
-		return nil, fmt.Errorf("failed to decode plugin configuration: %w", err)
-	}
-
-	result.normalize()
-	return result, nil
-}
-
-func targetThemeRequestKey(c *configuration) string {
-	return c.TargetUsername + "\x00" + c.TargetTheme
-}
-
-func teamSpecificThemePreferences(userID string, preferences []model.Preference) []model.Preference {
-	result := make([]model.Preference, 0)
-	seen := make(map[string]struct{})
-	for _, preference := range preferences {
-		if preference.Category != model.PreferenceCategoryTheme || preference.Name == "" {
-			continue
-		}
-		if _, ok := seen[preference.Name]; ok {
-			continue
-		}
-
-		seen[preference.Name] = struct{}{}
-		result = append(result, model.Preference{
-			UserId:   userID,
-			Category: model.PreferenceCategoryTheme,
-			Name:     preference.Name,
-		})
-	}
-
-	return result
-}
-
-func configWithTargetThemeRequestCleared(original *model.Config) *model.Config {
-	clone := *original
-	clone.PluginSettings = original.PluginSettings
-	clone.PluginSettings.Plugins = make(map[string]map[string]any, len(original.PluginSettings.Plugins))
-	for pluginID, settings := range original.PluginSettings.Plugins {
-		clone.PluginSettings.Plugins[pluginID] = settings
-	}
-
-	settings := make(map[string]any, len(original.PluginSettings.Plugins[defaultThemePluginID])+2)
-	usernameKeyFound := false
-	themeKeyFound := false
-	for key, value := range original.PluginSettings.Plugins[defaultThemePluginID] {
-		if strings.EqualFold(key, "TargetUsername") {
-			settings[key] = ""
-			usernameKeyFound = true
-			continue
-		}
-		if strings.EqualFold(key, "TargetTheme") {
-			settings[key] = ""
-			themeKeyFound = true
-			continue
-		}
-		settings[key] = value
-	}
-	if !usernameKeyFound {
-		settings["TargetUsername"] = ""
-	}
-	if !themeKeyFound {
-		settings["TargetTheme"] = ""
-	}
-	clone.PluginSettings.Plugins[defaultThemePluginID] = settings
-
-	return &clone
-}
-
-// ConfigurationWillBeSaved applies a one-shot per-user theme request before the
-// proposed configuration is persisted, and clears the request from the saved config.
-func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, error) {
-	if newCfg == nil {
-		return nil, errors.New("configuration cannot be nil")
-	}
-
-	pluginSettings, ok := newCfg.PluginSettings.Plugins[defaultThemePluginID]
-	if !ok {
-		return newCfg, nil
-	}
-
-	next, err := configurationFromPluginSettings(pluginSettings)
-	if err != nil {
-		p.API.LogError(fmt.Sprintf("invalid plugin configuration: %s", err.Error()))
-		return nil, err
-	}
-	if err := validateConfiguration(next); err != nil {
-		p.API.LogError(err.Error())
-		return nil, err
-	}
-	if !next.hasTargetThemeRequest() {
-		return newCfg, nil
-	}
-	if p.API == nil {
-		return nil, errors.New("plugin API is unavailable")
-	}
-
-	p.targetThemeRequestLock.Lock()
-	defer p.targetThemeRequestLock.Unlock()
-
-	requestKey := targetThemeRequestKey(next)
-	if requestKey == p.lastAppliedTargetTheme {
-		return configWithTargetThemeRequestCleared(newCfg), nil
-	}
-
-	user, appErr := p.API.GetUserByUsername(next.TargetUsername)
-	if appErr != nil {
-		err := fmt.Errorf("failed to resolve target user %q: %w", next.TargetUsername, appErr)
-		p.API.LogError(fmt.Sprintf("failed to resolve target user %q: %s", next.TargetUsername, appErr.Error()))
-		return nil, err
-	}
-	if user == nil {
-		err := fmt.Errorf("target user %q was not found", next.TargetUsername)
-		p.API.LogError(err.Error())
-		return nil, err
-	}
-	if user.IsBot {
-		err := fmt.Errorf("target user %q is a bot and cannot receive an administrator theme", next.TargetUsername)
-		p.API.LogError(fmt.Sprintf("target user %q (%s) is a bot and cannot receive an administrator theme", next.TargetUsername, user.Id))
-		return nil, err
-	}
-	if user.Id == "" {
-		err := fmt.Errorf("target user %q has no user ID", next.TargetUsername)
-		p.API.LogError(err.Error())
-		return nil, err
-	}
-
-	existingPreferences, appErr := p.API.GetPreferencesForUser(user.Id)
-	if appErr != nil {
-		err := fmt.Errorf("failed to load existing theme preferences for user %s: %w", user.Id, appErr)
-		p.API.LogError(fmt.Sprintf("failed to load existing theme preferences for user %s: %s", user.Id, appErr.Error()))
-		return nil, err
-	}
-	teamSpecificPreferences := teamSpecificThemePreferences(user.Id, existingPreferences)
-
-	preferences := []model.Preference{
-		{
-			UserId:   user.Id,
-			Category: model.PreferenceCategoryTheme,
-			Name:     "",
-			Value:    next.TargetTheme,
-		},
-	}
-	if appErr := p.API.UpdatePreferencesForUser(user.Id, preferences); appErr != nil {
-		err := fmt.Errorf("failed to apply target theme to user %s: %w", user.Id, appErr)
-		p.API.LogError(fmt.Sprintf("failed to apply target theme to user %s: %s", user.Id, appErr.Error()))
-		return nil, err
-	}
-	if len(teamSpecificPreferences) > 0 {
-		if appErr := p.API.DeletePreferencesForUser(user.Id, teamSpecificPreferences); appErr != nil {
-			err := fmt.Errorf("failed to clear existing team-specific themes for user %s: %w", user.Id, appErr)
-			p.API.LogError(fmt.Sprintf("failed to clear existing team-specific themes for user %s: %s", user.Id, appErr.Error()))
-			return nil, err
-		}
-	}
-
-	p.lastAppliedTargetTheme = requestKey
-	return configWithTargetThemeRequestCleared(newCfg), nil
 }
 
 func validateTheme(theme string) error {

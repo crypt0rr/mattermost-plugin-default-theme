@@ -12,10 +12,8 @@ import (
 type Plugin struct {
 	plugin.MattermostPlugin
 
-	configurationLock      sync.RWMutex
-	configuration          *configuration
-	targetThemeRequestLock sync.Mutex
-	lastAppliedTargetTheme string
+	configurationLock sync.RWMutex
+	configuration     *configuration
 }
 
 // UserHasBeenCreated applies the configured theme to a newly created human user.

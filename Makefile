@@ -2,7 +2,7 @@ GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK ?= govulncheck
 PLUGIN_ID := com.github.crypt0rr.default-theme
-PLUGIN_VERSION ?= 0.2.4
+PLUGIN_VERSION ?= 0.3.0
 BUNDLE := dist/$(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
 COVERAGE_FILE ?= coverage.out
 

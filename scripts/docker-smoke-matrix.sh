@@ -4,7 +4,7 @@ set -euo pipefail
 
 VERSIONS="${MM_VERSIONS:-11.7.0 11.8.5 11.9.1 11.10.1}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
-PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.2.4.tar.gz}"
+PLUGIN_BUNDLE="${PLUGIN_BUNDLE:-dist/com.github.crypt0rr.default-theme-0.3.0.tar.gz}"
 APP_PORT="${MM_SMOKE_PORT:-18065}"
 
 command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
